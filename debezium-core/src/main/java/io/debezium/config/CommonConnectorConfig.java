@@ -48,6 +48,9 @@ import io.debezium.util.Strings;
  */
 public abstract class CommonConnectorConfig {
 
+
+    // test change in the code
+    
     private static final Logger LOGGER = LoggerFactory.getLogger(CommonConnectorConfig.class);
 
     /**
