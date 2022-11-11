@@ -4552,6 +4552,43 @@ public class OracleConnectorIT extends AbstractConnectorTest {
         }
     }
 
+    @Test
+    @FixFor("DBZ-5819")
+    public void shouldSkipDefaultValueForExplicitNull() throws Exception {
+        final LogInterceptor logInterceptor = new LogInterceptor(RelationalSnapshotChangeEventSource.class);
+
+        TestHelper.dropTable(connection, "DBZ5819");
+
+        try {
+            String ddl = "CREATE TABLE DBZ5819 (NULL_ID NUMERIC(10), NULL_1 CHAR(1) DEFAULT 'N', NULL_2 CHAR(1) DEFAULT 'N')";
+            connection.execute(ddl);
+
+            TestHelper.streamTable(connection, "DBZ5819");
+            connection.execute("INSERT INTO DBZ5819 VALUES(1, null, 'N')");
+
+            Configuration config = TestHelper.defaultConfig()
+                    .with(OracleConnectorConfig.TABLE_INCLUDE_LIST, "DEBEZIUM.DBZ5819")
+                    .build();
+
+            start(OracleConnector.class, config);
+            assertConnectorIsRunning();
+
+            waitForStreamingRunning(TestHelper.CONNECTOR_NAME, TestHelper.SERVER_NAME);
+            SourceRecords sourceRecords = consumeRecordsByTopic(1);
+
+            assertThat(sourceRecords.allRecordsInOrder()).hasSize(1);
+            Struct struct = (Struct) ((Struct) sourceRecords.allRecordsInOrder().get(0).value()).get(AFTER);
+            assertEquals(1L, struct.get("NULL_ID"));
+            assertEquals("null", struct.get("NULL_1"));
+            assertEquals("N", struct.get("NULL_2"));
+
+            stopConnector();
+        }
+        finally {
+            TestHelper.dropTable(connection, "DBZ5819");
+        }
+    }
+
     private void waitForCurrentScnToHaveBeenSeenByConnector() throws SQLException {
         try (OracleConnection admin = TestHelper.adminConnection(true)) {
             final Scn scn = admin.getCurrentScn();
