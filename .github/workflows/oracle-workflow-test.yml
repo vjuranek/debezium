@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - surefire_update
       - 1.*
       - 2.*
     paths:
