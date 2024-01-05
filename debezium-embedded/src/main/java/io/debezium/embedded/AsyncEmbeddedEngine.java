@@ -812,7 +812,7 @@ public final class AsyncEmbeddedEngine<R> implements DebeziumEngine<R>, AsyncEng
 
         @Override
         public void processRecords(final List<SourceRecord> records) throws InterruptedException {
-            LOGGER.debug("Submitting {} records for processing.", records.size());
+            LOGGER.debug("Thread {} is submitting {} records for processing.", Thread.currentThread().getName(), records.size());
             final List<Future<SourceRecord>> recordFutures = new ArrayList<>(records.size());
 
             // changeRecords.stream().forEachOrdered();
@@ -820,7 +820,7 @@ public final class AsyncEmbeddedEngine<R> implements DebeziumEngine<R>, AsyncEng
                 recordFutures.add(recordService.submit(new TransformRecord(record, transformations)));
             }
 
-            LOGGER.debug("Getting source records.");
+            LOGGER.debug("Thread {} is getting source records.", Thread.currentThread().getName());
             final List<SourceRecord> transformedRecords = new ArrayList<>(recordFutures.size());
             try {
                 for (Future<SourceRecord> f : recordFutures) {

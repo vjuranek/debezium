@@ -380,6 +380,72 @@ public class AsyncEmbeddedEngineTest {
         assertThat(error.getMessage()).isEqualTo("Engine has been already shut down.");
     }
 
+    @Test
+    public void testExecuteSmt() throws Exception {
+        final Properties props = new Properties();
+        props.setProperty(ConnectorConfig.NAME_CONFIG, "debezium-engine");
+        props.setProperty(ConnectorConfig.TASKS_MAX_CONFIG, "1");
+        props.setProperty(ConnectorConfig.CONNECTOR_CLASS_CONFIG, FileStreamSourceConnector.class.getName());
+        props.setProperty(StandaloneConfig.OFFSET_STORAGE_FILE_FILENAME_CONFIG, OFFSET_STORE_PATH.toAbsolutePath().toString());
+        props.setProperty(WorkerConfig.OFFSET_COMMIT_INTERVAL_MS_CONFIG, "0");
+        props.setProperty(FileStreamSourceConnector.FILE_CONFIG, TEST_FILE_PATH.toAbsolutePath().toString());
+        props.setProperty(FileStreamSourceConnector.TOPIC_CONFIG, "testTopic");
+        props.setProperty("predicates", "filter");
+        props.setProperty("predicates.filter.type", DebeziumEngineTestUtils.FilterPredicate.class.getName());
+        props.setProperty("transforms", "filter, router");
+        props.setProperty("transforms.filter.type", "io.debezium.embedded.DebeziumEngineTestUtils$FilterTransform");
+        props.setProperty("transforms.filter.predicate", "filter");
+        props.setProperty("transforms.router.type", "org.apache.kafka.connect.transforms.RegexRouter");
+        props.setProperty("transforms.router.regex", "(.*)");
+        props.setProperty("transforms.router.replacement", "routing_smt_$1");
+
+        appendLinesToSource(NUMBER_OF_LINES);
+
+        CountDownLatch snapshotLatch = new CountDownLatch(1);
+        // We have only 5 groups as the first one is filtered out (first records is filtered out and therefore group not counted)
+        CountDownLatch allLatch = new CountDownLatch(5);
+
+        DebeziumEngine.Builder<SourceRecord> builder = new AsyncEmbeddedEngine.AsyncEngineBuilder();
+        engine = builder
+                .using(props)
+                .using(new TestEngineConnectorCallback())
+                .notifying((records, committer) -> {
+                    // The first event is filtered out.
+                    assertThat(records.size()).isGreaterThanOrEqualTo(NUMBER_OF_LINES - 1);
+
+                    records.forEach(r -> assertThat(r.topic()).isEqualTo("routing_smt_testTopic"));
+                    Integer groupCount = records.size() / NUMBER_OF_LINES;
+
+                    for (SourceRecord r : records) {
+                        committer.markProcessed(r);
+                    }
+
+                    committer.markBatchFinished();
+                    snapshotLatch.countDown();
+                    for (int i = 0; i < groupCount; i++) {
+                        allLatch.countDown();
+                    }
+                }).build();
+
+        engineExecSrv.submit(() -> {
+            LoggingContext.forConnector(getClass().getSimpleName(), "", "engine");
+            engine.run();
+        });
+
+        snapshotLatch.await(1, TimeUnit.SECONDS);
+        assertThat(snapshotLatch.getCount()).isEqualTo(0);
+
+        for (int i = 0; i < 5; i++) {
+            // Add a few more lines, and then verify they are consumed ...
+            appendLinesToSource(NUMBER_OF_LINES);
+            Thread.sleep(10);
+        }
+        allLatch.await(1, TimeUnit.SECONDS);
+        assertThat(allLatch.getCount()).isEqualTo(0);
+
+        stopEngine();
+    }
+
     protected void stopEngine() {
         try {
             engine.close();
