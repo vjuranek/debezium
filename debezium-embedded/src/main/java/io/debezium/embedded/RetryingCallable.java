@@ -40,7 +40,7 @@ public abstract class RetryingCallable<V> implements Callable<V> {
         // -1 means infinite retries; int range is not infinite, but in this case probably a sufficient approximation.
         // We start from retries-1 as the last call attempt is done out of the retry loop and this last call either
         // succeeds or throws an exception which is propagated further.
-        int attempts = retries == 0 ? 0 : retries - 1;
+        int attempts = retries; // == 0 ? 0 : retries - 1;
         while (attempts != 0) {
             try {
                 return doCall();

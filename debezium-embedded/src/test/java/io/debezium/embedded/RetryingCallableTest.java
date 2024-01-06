@@ -93,10 +93,11 @@ public class RetryingCallableTest {
             assertThat(e.getCause() instanceof RetriableException).isTrue();
         }
 
-        // Should be called 5 times.
-        assertThat(failing.calls).isEqualTo(5);
-        // But only 4 times we log the failure, last call either succeeds or propagate the exception.
-        assertThat(interceptor.countOccurrences("Failed with retriable exception")).isEqualTo(4);
+        // Should be called 6 times - 1 call + 5 retries.
+        assertThat(failing.calls).isEqualTo(6);
+        // But we should see only 5 exception as the call was retried 5 times and on the 6th call failed, which is
+        // not logged but thrown up to the stack.
+        assertThat(interceptor.countOccurrences("Failed with retriable exception")).isEqualTo(5);
     }
 
     @Test
