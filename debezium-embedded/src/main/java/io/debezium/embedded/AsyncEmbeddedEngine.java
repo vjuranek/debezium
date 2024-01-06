@@ -31,7 +31,6 @@ import java.util.stream.Collectors;
 
 import org.apache.kafka.common.config.Config;
 import org.apache.kafka.connect.connector.Task;
-import org.apache.kafka.connect.errors.RetriableException;
 import org.apache.kafka.connect.json.JsonConverter;
 import org.apache.kafka.connect.json.JsonConverterConfig;
 import org.apache.kafka.connect.runtime.AbstractHerder;
@@ -65,6 +64,7 @@ import io.debezium.engine.source.DebeziumSourceConnectorContext;
 import io.debezium.engine.source.DebeziumSourceTask;
 import io.debezium.engine.source.DebeziumSourceTaskContext;
 import io.debezium.engine.spi.OffsetCommitPolicy;
+import io.debezium.util.DelayStrategy;
 
 /**
  * // TODO: Document this
@@ -664,73 +664,30 @@ public final class AsyncEmbeddedEngine<R> implements DebeziumEngine<R>, AsyncEng
 
     // ========================================================= TODO ======================================================
 
-    // private Throwable handleRetries(final RetriableException e, final List<Map<String, String>> taskConfigs) {
-    // Throwable retryError = null;
-    // int maxRetries = getErrorsMaxRetries();
-    // LOGGER.info("Retriable exception thrown, connector will be restarted; errors.max.retries={}", maxRetries, e);
-    // if (maxRetries == 0) {
-    // retryError = e;
-    // }
-    // else if (maxRetries < EmbeddedEngineConfig.DEFAULT_ERROR_MAX_RETRIES) {
-    // LOGGER.warn("Setting {}={} is deprecated. To disable retries on connection errors, set {}=0", EmbeddedEngineConfig.ERRORS_MAX_RETRIES.name(), maxRetries,
-    // EmbeddedEngineConfig.ERRORS_MAX_RETRIES.name());
-    // retryError = e;
-    // }
-    // else {
-    // DelayStrategy delayStrategy = delayStrategy(config);
-    // int totalRetries = 0;
-    // boolean startedSuccessfully = false;
-    // while (!startedSuccessfully) {
-    // try {
-    // totalRetries++;
-    // LOGGER.info("Starting connector, attempt {}", totalRetries);
-    // task.stop();
-    // task.start(taskConfigs.get(0));
-    // startedSuccessfully = true;
-    // }
-    // catch (Exception ex) {
-    // if (totalRetries == maxRetries) {
-    // LOGGER.error("Can't start the connector, max retries to connect exceeded; stopping connector...", ex);
-    // retryError = ex;
-    // }
-    // else {
-    // LOGGER.error("Can't start the connector, will retry later...", ex);
-    // }
-    // }
-    // delayStrategy.sleepWhen(!startedSuccessfully);
-    // }
-    // }
-    // return retryError;
-    // }
-
-    private static class PollRecords implements Callable<Void> {
+    /**
+     * {@link Callable} which in the loop polls the connector for the records.
+     * If there are any records, they are passed to provided processor.
+     * The {@link Callable} is {@link RetryingCallable} - if the {@link org.apache.kafka.connect.errors.RetriableException}
+     * is thrown, the {@link Callable} is executed again according to configured {@link DelayStrategy} and number of retries.
+     */
+    private static class PollRecords extends RetryingCallable<Void> {
         final EngineSourceTask task;
         final RecordProcessor processor;
         final AtomicReference<State> engineState;
 
         PollRecords(final EngineSourceTask task, final RecordProcessor processor, final AtomicReference<State> engineState) {
+            super(Configuration.from(task.context().config()).getInteger(EmbeddedEngineConfig.ERRORS_MAX_RETRIES));
             this.task = task;
             this.processor = processor;
             this.engineState = engineState;
         }
 
         @Override
-        public Void call() throws Exception {
+        public Void doCall() throws Exception {
             while (engineState.get() == State.POLLING_TASKS) {
-                List<SourceRecord> changeRecords = null;
-                try {
-                    LOGGER.debug("Thread {} running task {} starts polling for records.", Thread.currentThread().getName(), task.connectTask());
-                    changeRecords = task.connectTask().poll(); // blocks until there are values ...
-                    LOGGER.debug("Thread {} polled {} records.", Thread.currentThread().getName(), changeRecords == null ? "no" : changeRecords.size());
-                }
-                catch (RetriableException e) {
-                    LOGGER.error("failed with ", e);
-                    // errors.retryError = handleRetries(e, taskConfigs);
-                    // if (errors.retryError != null) {
-                    // throw errors.retryError;
-                    // }
-                }
-
+                LOGGER.debug("Thread {} running task {} starts polling for records.", Thread.currentThread().getName(), task.connectTask());
+                final List<SourceRecord> changeRecords = task.connectTask().poll(); // blocks until there are values ...
+                LOGGER.debug("Thread {} polled {} records.", Thread.currentThread().getName(), changeRecords == null ? "no" : changeRecords.size());
                 if (changeRecords != null && !changeRecords.isEmpty()) {
                     processor.processRecords(changeRecords);
                 }
@@ -739,6 +696,13 @@ public final class AsyncEmbeddedEngine<R> implements DebeziumEngine<R>, AsyncEng
                 }
             }
             return null;
+        }
+
+        @Override
+        public DelayStrategy delayStrategy() {
+            final Configuration config = Configuration.from(task.context().config());
+            return DelayStrategy.exponential(Duration.ofMillis(config.getInteger(EmbeddedEngineConfig.ERRORS_RETRY_DELAY_INITIAL_MS)),
+                    Duration.ofMillis(config.getInteger(EmbeddedEngineConfig.ERRORS_RETRY_DELAY_MAX_MS)));
         }
     }
 

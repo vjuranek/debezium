@@ -47,9 +47,10 @@ public abstract class RetryingCallable<V> implements Callable<V> {
             }
             catch (RetriableException e) {
                 attempts--;
+                String retriesExplained = retries == -1 ? "infinity" : String.valueOf(retries);
                 LOGGER.info("Failed with retriable exception, will retry later; attempt #{} out of {}",
                         retries - attempts - 1,
-                        retries,
+                        retriesExplained,
                         e);
                 delayStrategy.sleepWhen(true);
                 // DelayStrategy catches interrupted exception during the sleep and just set back interrupted status.
