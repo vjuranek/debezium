@@ -38,6 +38,7 @@ import io.debezium.DebeziumException;
 import io.debezium.connector.simple.SimpleSourceConnector;
 import io.debezium.doc.FixFor;
 import io.debezium.engine.DebeziumEngine;
+import io.debezium.junit.logging.LogInterceptor;
 import io.debezium.util.LoggingContext;
 import io.debezium.util.Testing;
 
@@ -454,7 +455,7 @@ public class AsyncEmbeddedEngineTest {
         props.setProperty(ConnectorConfig.CONNECTOR_CLASS_CONFIG, SimpleSourceConnector.class.getName());
         props.setProperty(StandaloneConfig.OFFSET_STORAGE_FILE_FILENAME_CONFIG, OFFSET_STORE_PATH.toAbsolutePath().toString());
         props.setProperty(WorkerConfig.OFFSET_COMMIT_INTERVAL_MS_CONFIG, "0");
-        props.setProperty(SimpleSourceConnector.RETRIABLE_ERROR_ON, "5");
+        props.setProperty(SimpleSourceConnector.RETRIABLE_ERROR_ON, "5, 7");
 
         CountDownLatch recordsLatch = new CountDownLatch(SimpleSourceConnector.DEFAULT_BATCH_COUNT);
 
@@ -474,10 +475,51 @@ public class AsyncEmbeddedEngineTest {
             engine.run();
         });
 
-        recordsLatch.await(1, TimeUnit.SECONDS);
+        recordsLatch.await(5, TimeUnit.SECONDS);
         assertThat(recordsLatch.getCount()).isEqualTo(0);
 
         stopEngine();
+    }
+
+    @Test
+    public void testConnectorFailsIfMaxRetriesExceeded() throws Exception {
+        final Properties props = new Properties();
+        props.setProperty(ConnectorConfig.NAME_CONFIG, "debezium-engine");
+        props.setProperty(ConnectorConfig.TASKS_MAX_CONFIG, "1");
+        props.setProperty(ConnectorConfig.CONNECTOR_CLASS_CONFIG, SimpleSourceConnector.class.getName());
+        props.setProperty(StandaloneConfig.OFFSET_STORAGE_FILE_FILENAME_CONFIG, OFFSET_STORE_PATH.toAbsolutePath().toString());
+        props.setProperty(WorkerConfig.OFFSET_COMMIT_INTERVAL_MS_CONFIG, "0");
+        props.setProperty(SimpleSourceConnector.RETRIABLE_ERROR_ON, "5, 7");
+        props.setProperty(EmbeddedEngineConfig.ERRORS_MAX_RETRIES.name(), "1");
+
+        CountDownLatch recordsLatch = new CountDownLatch(SimpleSourceConnector.DEFAULT_BATCH_COUNT);
+        final LogInterceptor interceptor = new LogInterceptor(AsyncEmbeddedEngine.class);
+
+        DebeziumEngine.Builder<SourceRecord> builder = new AsyncEmbeddedEngine.AsyncEngineBuilder();
+        engine = builder
+                .using(props)
+                .using(new TestEngineConnectorCallback())
+                .notifying((records, committer) -> {
+                    assertThat(records.size()).isEqualTo(SimpleSourceConnector.DEFAULT_RECORD_COUNT_PER_BATCH);
+                    committer.markProcessed(records.get(0));
+                    committer.markBatchFinished();
+                    recordsLatch.countDown();
+                }).build();
+
+        engineExecSrv.submit(() -> {
+            LoggingContext.forConnector(getClass().getSimpleName(), "", "engine");
+            engine.run();
+        });
+
+        recordsLatch.await(5, TimeUnit.SECONDS);
+        // Engine should fail on record 7 as we have only one retry.
+        assertThat(recordsLatch.getCount()).isEqualTo(4);
+        // Engine failed with an error.
+        assertThat(interceptor.containsErrorMessage("Engine has failed with")).isTrue();
+        // Engine was stopped without stop() begin explicitly called.
+        assertThat(interceptor.containsMessage("Engine state has changed from 'POLLING_TASKS' to 'STOPPING'")).isTrue();
+        // And engine was successfully stopped.
+        assertThat(interceptor.containsMessage("Engine state has changed from 'STOPPING' to 'STOPPED'")).isTrue();
     }
 
     protected void stopEngine() {
