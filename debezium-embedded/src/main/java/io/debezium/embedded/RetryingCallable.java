@@ -49,7 +49,7 @@ public abstract class RetryingCallable<V> implements Callable<V> {
                 attempts--;
                 String retriesExplained = retries == -1 ? "infinity" : String.valueOf(retries);
                 LOGGER.info("Failed with retriable exception, will retry later; attempt #{} out of {}",
-                        retries - attempts - 1,
+                        retries - attempts,
                         retriesExplained,
                         e);
                 delayStrategy.sleepWhen(true);
