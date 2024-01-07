@@ -54,11 +54,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.debezium.DebeziumException;
+import io.debezium.annotation.VisibleForTesting;
 import io.debezium.common.annotation.Incubating;
 import io.debezium.config.CommonConnectorConfig;
 import io.debezium.config.Configuration;
 import io.debezium.config.Instantiator;
 import io.debezium.engine.DebeziumEngine;
+import io.debezium.engine.StopEngineException;
 import io.debezium.engine.source.DebeziumSourceConnector;
 import io.debezium.engine.source.DebeziumSourceConnectorContext;
 import io.debezium.engine.source.DebeziumSourceTask;
@@ -76,6 +78,7 @@ public final class AsyncEmbeddedEngine<R> implements DebeziumEngine<R>, AsyncEng
     private final Configuration config;
     private final io.debezium.util.Clock clock;
     private final ClassLoader classLoader;
+    private final Consumer<SourceRecord> consumer;
     private final DebeziumEngine.ChangeConsumer<SourceRecord> handler;
     private final DebeziumEngine.CompletionCallback completionCallback;
     private final Optional<DebeziumEngine.ConnectorCallback> connectorCallback;
@@ -93,6 +96,7 @@ public final class AsyncEmbeddedEngine<R> implements DebeziumEngine<R>, AsyncEng
     private final ExecutorService recordService;
 
     private AsyncEmbeddedEngine(Properties config,
+                                Consumer<SourceRecord> consumer,
                                 DebeziumEngine.ChangeConsumer<SourceRecord> handler,
                                 ClassLoader classLoader,
                                 io.debezium.util.Clock clock,
@@ -102,7 +106,9 @@ public final class AsyncEmbeddedEngine<R> implements DebeziumEngine<R>, AsyncEng
                                 Function<SourceRecord, R> serializer) {
 
         this.config = Configuration.from(Objects.requireNonNull(config, "A connector configuration must be specified."));
+        this.consumer = consumer;
         this.handler = Objects.requireNonNull(handler, "A connector consumer or changeHandler must be specified.");
+        // this.handler = handler;
         this.classLoader = classLoader == null ? Instantiator.getClassLoader() : classLoader;
         this.clock = clock == null ? io.debezium.util.Clock.system() : clock;
         this.completionCallback = completionCallback != null ? completionCallback : new DefaultCompletionCallback();
@@ -346,7 +352,7 @@ public final class AsyncEmbeddedEngine<R> implements DebeziumEngine<R>, AsyncEng
      * @param handler {@link DebeziumEngine.ChangeConsumer} which would consume obtained records
      */
     private void runTasksPolling(final List<EngineSourceTask> tasks, DebeziumEngine.ChangeConsumer<SourceRecord> handler)
-            throws InterruptedException, ExecutionException {
+            throws ExecutionException {
         LOGGER.debug("Starting tasks polling.");
         final ExecutorCompletionService<Void> taskCompletionService = new ExecutorCompletionService(taskService);
         for (EngineSourceTask task : tasks) {
@@ -359,7 +365,13 @@ public final class AsyncEmbeddedEngine<R> implements DebeziumEngine<R>, AsyncEng
         }
 
         for (int i = 0; i < tasks.size(); i++) {
-            taskCompletionService.take().get();
+            try {
+                taskCompletionService.take().get();
+            }
+            catch (InterruptedException e) {
+                LOGGER.debug("Task interrupted while polling.");
+                Thread.currentThread().interrupt();
+            }
             LOGGER.debug("Task #{} out of {} tasks has stopped polling.", i, tasks.size());
         }
     }
@@ -425,7 +437,7 @@ public final class AsyncEmbeddedEngine<R> implements DebeziumEngine<R>, AsyncEng
      * @param tasks {@link EngineSourceTask}s which were created by this connector and should be stopped now.
      */
     private void stopConnector(List<EngineSourceTask> tasks, State engineState) {
-        if (State.STARING_TASKS.compareTo(engineState) >= 0) {
+        if (State.STARING_TASKS.compareTo(engineState) <= 0) {
             LOGGER.debug("Stopping record pipeline executor service");
             // TODO: stop record executor service
             LOGGER.debug("Stopping the tasks.");
@@ -499,7 +511,7 @@ public final class AsyncEmbeddedEngine<R> implements DebeziumEngine<R>, AsyncEng
             String errors = configInfos.values().stream()
                     .flatMap(v -> v.configValue().errors().stream())
                     .collect(Collectors.joining(" "));
-            throw new DebeziumException("Connector configuration is not valid: " + errors);
+            throw new DebeziumException("Connector configuration is not valid. " + errors);
         }
         LOGGER.debug("Connector configuration is valid");
         return connectorConfig;
@@ -703,6 +715,19 @@ public final class AsyncEmbeddedEngine<R> implements DebeziumEngine<R>, AsyncEng
             final Configuration config = Configuration.from(task.context().config());
             return DelayStrategy.exponential(Duration.ofMillis(config.getInteger(EmbeddedEngineConfig.ERRORS_RETRY_DELAY_INITIAL_MS)),
                     Duration.ofMillis(config.getInteger(EmbeddedEngineConfig.ERRORS_RETRY_DELAY_MAX_MS)));
+        }
+    }
+
+    /**
+     * For testing purposes ONLY.
+     * Exposes tasks to a use defined consumer, which allows to run the tasks in tests.
+     *
+     * @param consumer {@link Consumer} for running tasks.
+     */
+    @VisibleForTesting
+    public void runWithTask(Consumer<SourceTask> consumer) {
+        for (EngineSourceTask task : tasks) {
+            consumer.accept(task.connectTask());
         }
     }
 
@@ -1006,6 +1031,7 @@ public final class AsyncEmbeddedEngine<R> implements DebeziumEngine<R>, AsyncEng
     public static final class AsyncEngineBuilder implements DebeziumEngine.Builder<SourceRecord> {
 
         private Properties config;
+        private Consumer<SourceRecord> consumer;
         private DebeziumEngine.ChangeConsumer<SourceRecord> handler;
         private ClassLoader classLoader;
         private io.debezium.util.Clock clock;
@@ -1015,7 +1041,9 @@ public final class AsyncEmbeddedEngine<R> implements DebeziumEngine<R>, AsyncEng
 
         @Override
         public Builder<SourceRecord> notifying(Consumer<SourceRecord> consumer) {
-            return this; // TODO: Customise this generated block
+            this.consumer = consumer;
+            this.handler = buildDefaultChangeConsumer(consumer);
+            return this;
         }
 
         @Override
@@ -1023,7 +1051,7 @@ public final class AsyncEmbeddedEngine<R> implements DebeziumEngine<R>, AsyncEng
             this.handler = handler;
             if (!config.contains(CommonConnectorConfig.TOMBSTONES_ON_DELETE.name()) && !handler.supportsTombstoneEvents()) {
                 LOGGER.info("Consumer doesn't support tombstone events, setting '{}' to false.", CommonConnectorConfig.TOMBSTONES_ON_DELETE.name());
-                config.put(CommonConnectorConfig.TOMBSTONES_ON_DELETE.name(), false);
+                config.put(CommonConnectorConfig.TOMBSTONES_ON_DELETE.name(), "false");
             }
             return this;
         }
@@ -1071,8 +1099,41 @@ public final class AsyncEmbeddedEngine<R> implements DebeziumEngine<R>, AsyncEng
 
         @Override
         public DebeziumEngine<SourceRecord> build() {
-            return new AsyncEmbeddedEngine(config, handler, classLoader, clock, completionCallback, connectorCallback, offsetCommitPolicy, null);
+            return new AsyncEmbeddedEngine(config, consumer, handler, classLoader, clock, completionCallback, connectorCallback, offsetCommitPolicy, null);
         }
+    }
+
+    private static ChangeConsumer<SourceRecord> buildDefaultChangeConsumer(Consumer<SourceRecord> consumer) {
+        return new DebeziumEngine.ChangeConsumer<SourceRecord>() {
+
+            /**
+             * the default implementation that is compatible with the old Consumer api.
+             *
+             * On every record, it calls the consumer, and then only marks the record
+             * as processed when accept returns, additionally, it handles StopEngineException
+             * and ensures that we all ways try and mark a batch as finished, even with exceptions
+             * @param records the records to be processed
+             * @param committer the committer that indicates to the system that we are finished
+             *
+             * @throws Exception
+             */
+            @Override
+            public void handleBatch(List<SourceRecord> records, DebeziumEngine.RecordCommitter<SourceRecord> committer) throws InterruptedException {
+                for (SourceRecord record : records) {
+                    try {
+                        consumer.accept(record);
+                        committer.markProcessed(record);
+                    }
+                    catch (StopEngineException ex) {
+                        // ensure that we mark the record as finished
+                        // in this case
+                        committer.markProcessed(record);
+                        throw ex;
+                    }
+                }
+                committer.markBatchFinished();
+            }
+        };
     }
 
     public static final class EngineSourceConnectorContext implements DebeziumSourceConnectorContext, SourceConnectorContext {

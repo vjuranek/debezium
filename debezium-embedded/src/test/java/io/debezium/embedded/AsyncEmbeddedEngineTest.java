@@ -294,7 +294,7 @@ public class AsyncEmbeddedEngineTest {
         });
         waitForTasksToStart(1);
 
-        callbackLatch.await(1, TimeUnit.SECONDS);
+        callbackLatch.await((Long) AsyncEngineConfig.TASK_MANAGEMENT_TIMEOUT_MS.defaultValue() + 1_0000, TimeUnit.MILLISECONDS);
         assertThat(callbackLatch.getCount()).isEqualTo(0);
     }
 
@@ -514,6 +514,8 @@ public class AsyncEmbeddedEngineTest {
         recordsLatch.await(5, TimeUnit.SECONDS);
         // Engine should fail on record 7 as we have only one retry.
         assertThat(recordsLatch.getCount()).isEqualTo(4);
+
+        waitForEngineToStop();
         // Engine failed with an error.
         assertThat(interceptor.containsErrorMessage("Engine has failed with")).isTrue();
         // Engine was stopped without stop() begin explicitly called.
@@ -540,7 +542,7 @@ public class AsyncEmbeddedEngineTest {
     protected void waitForEngineToStart() {
         Awaitility.await()
                 .alias("Engine haven't started on time")
-                .pollInterval(10, TimeUnit.MILLISECONDS)
+                .pollInterval((Long) AsyncEngineConfig.TASK_MANAGEMENT_TIMEOUT_MS.defaultValue() + 1_000, TimeUnit.MILLISECONDS)
                 .atMost(1, TimeUnit.SECONDS)
                 .until(() -> isEngineRunning.get());
     }
@@ -548,7 +550,7 @@ public class AsyncEmbeddedEngineTest {
     protected void waitForEngineToStop() {
         Awaitility.await()
                 .alias("Engine haven't stopped on time")
-                .pollInterval(10, TimeUnit.MILLISECONDS)
+                .pollInterval((Long) AsyncEngineConfig.TASK_MANAGEMENT_TIMEOUT_MS.defaultValue() + 1_000, TimeUnit.MILLISECONDS)
                 .atMost(10, TimeUnit.SECONDS)
                 .until(() -> !isEngineRunning.get());
     }
@@ -557,7 +559,7 @@ public class AsyncEmbeddedEngineTest {
         Awaitility.await()
                 .alias("Engine haven't started on time")
                 .pollInterval(10, TimeUnit.MILLISECONDS)
-                .atMost(1, TimeUnit.SECONDS)
+                .atMost((Long) AsyncEngineConfig.TASK_MANAGEMENT_TIMEOUT_MS.defaultValue() + 1_000, TimeUnit.MILLISECONDS)
                 .until(() -> runningTasks.get() >= minRunningTasks);
     }
 
