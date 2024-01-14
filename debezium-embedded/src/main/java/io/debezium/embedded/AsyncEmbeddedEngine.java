@@ -184,6 +184,7 @@ public final class AsyncEmbeddedEngine<R> implements DebeziumEngine<R>, AsyncEng
             LOGGER.debug("Stopping " + AsyncEmbeddedEngine.class.getName());
             setEngineState(stateBeforeStop, State.STOPPING);
             try {
+                if (State.STOPPING.compareTo(getEngineState()) > 0)
                 close(stateBeforeStop);
             }
             catch (Throwable ct) {
