@@ -156,7 +156,6 @@ public final class AsyncEmbeddedEngine<R> implements DebeziumEngine<R>, AsyncEng
     @Override
     public void run() {
         Throwable exitError = null;
-
         try {
             LOGGER.debug("Initializing connector and starting it");
             setEngineState(State.STARTING, State.INITIALIZING);
@@ -189,9 +188,6 @@ public final class AsyncEmbeddedEngine<R> implements DebeziumEngine<R>, AsyncEng
             }
             catch (Throwable ct) {
                 LOGGER.error("Failed to close the engine: ", ct);
-                if (exitError == null) {
-                    exitError = ct;
-                }
             }
         }
         finally {
