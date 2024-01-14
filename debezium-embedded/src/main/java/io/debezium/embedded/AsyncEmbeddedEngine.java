@@ -186,7 +186,8 @@ public final class AsyncEmbeddedEngine<R> implements DebeziumEngine<R>, AsyncEng
                 setEngineState(stateBeforeStop, State.STOPPING);
                 try {
                     close(stateBeforeStop);
-                } catch (Throwable ct) {
+                }
+                catch (Throwable ct) {
                     LOGGER.error("Failed to close the engine: ", ct);
                 }
             }
