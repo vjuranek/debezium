@@ -21,7 +21,7 @@ import org.junit.Test;
 import io.debezium.config.Configuration;
 import io.debezium.connector.mysql.MySqlConnectorConfig.SnapshotMode;
 import io.debezium.doc.FixFor;
-import io.debezium.embedded.AbstractConnectorTest;
+import io.debezium.embedded.AbstractAsyncEngineConnectorTest;
 import io.debezium.jdbc.JdbcConnection;
 import io.debezium.junit.SkipWhenDatabaseVersion;
 
@@ -29,7 +29,7 @@ import io.debezium.junit.SkipWhenDatabaseVersion;
  * @author Inki Hwang
  */
 @SkipWhenDatabaseVersion(check = LESS_THAN, major = 5, minor = 6, reason = "DDL uses fractional second data types, not supported until MySQL 5.6")
-public class MySqlConnectorSchemaValidateIT extends AbstractConnectorTest {
+public class MySqlConnectorSchemaValidateIT extends AbstractAsyncEngineConnectorTest {
 
     private static final Path DB_HISTORY_PATH = Files.createTestingPath("file-db-history-connect.txt").toAbsolutePath();
     private final UniqueDatabase DATABASE = new UniqueDatabase("sql_bin_log_off", "sql_bin_log_off_test")
@@ -51,6 +51,11 @@ public class MySqlConnectorSchemaValidateIT extends AbstractConnectorTest {
     public void afterEach() {
         try {
             stopConnector();
+        }
+        catch (IllegalStateException e) {
+            if (!e.getMessage().startsWith("Engine is already being shutting down")) {
+                throw e;
+            }
         }
         finally {
             Files.delete(DB_HISTORY_PATH);
@@ -160,7 +165,7 @@ public class MySqlConnectorSchemaValidateIT extends AbstractConnectorTest {
         }
 
         waitForConnectorShutdown("mysql", DATABASE.getServerName());
-        stopConnector();
+        // stopConnector();
 
         final Throwable e = exception.get();
         if (e == null) {
