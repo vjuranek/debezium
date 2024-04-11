@@ -15,12 +15,19 @@ import org.apache.kafka.connect.source.SourceTask;
  */
 public class EngineSourceTask implements DebeziumSourceTask {
 
+    private final int taskId;
     private final SourceTask connectTask;
     private final DebeziumSourceTaskContext context;
 
-    public EngineSourceTask(final SourceTask connectTask, final DebeziumSourceTaskContext context) {
+    public EngineSourceTask(final int taskId, final SourceTask connectTask, final DebeziumSourceTaskContext context) {
+        this.taskId = taskId;
         this.connectTask = connectTask;
         this.context = context;
+    }
+
+    @Override
+    public int taskId() {
+        return taskId;
     }
 
     @Override

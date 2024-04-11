@@ -371,6 +371,7 @@ public final class AsyncEmbeddedEngine<R> implements DebeziumEngine<R>, AsyncEng
         else {
             LOGGER.debug("Creating {} instance(s) of source task(s)", taskConfigs.size());
         }
+        int i = 0;
         for (Map<String, String> taskConfig : taskConfigs) {
             final SourceTask task = (SourceTask) taskClass.getDeclaredConstructor().newInstance();
             final EngineSourceTaskContext taskContext = new EngineSourceTaskContext(
@@ -381,7 +382,7 @@ public final class AsyncEmbeddedEngine<R> implements DebeziumEngine<R>, AsyncEng
                     clock,
                     transformations);
             task.initialize(taskContext); // Initialize Kafka Connect source task
-            tasks.add(new EngineSourceTask(task, taskContext)); // Create new DebeziumSourceTask
+            tasks.add(new EngineSourceTask(++i, task, taskContext)); // Create new DebeziumSourceTask
         }
     }
 

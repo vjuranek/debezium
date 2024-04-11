@@ -17,6 +17,12 @@ import io.debezium.common.annotation.Incubating;
 @Incubating
 public interface DebeziumSourceTask {
     /**
+     * Returns ID of the task.
+     * @return task ID
+     */
+    int taskId();
+
+    /**
      * Returns the {@link DebeziumSourceTaskContext} for this DebeziumSourceTask.
      * @return the DebeziumSourceTaskContext for this task
      */
