@@ -15,6 +15,10 @@ public interface EngineTaskMetricsMXBean extends DebeziumEngineMetricsMXBean {
 
     long getTotalNumberOfEventsProcessed();
 
+    long getTotalNumberOfEventsSeenBeforeProcessing();
+
+    long getTotalNumberOfEventsSeenAfterProcessing();
+
     void onEventSeen();
 
     void onEventsSeen(long numberOfEventsSeen);
@@ -22,4 +26,8 @@ public interface EngineTaskMetricsMXBean extends DebeziumEngineMetricsMXBean {
     void onEventProcessed();
 
     void onEventsProcessed(long numberOfEventsProcessed);
+
+    void onEventsSeenBeforeProcessing(long numberOfEventsSeen);
+
+    void onEventsSeenAfterProcessing(long numberOfEventsSeen);
 }

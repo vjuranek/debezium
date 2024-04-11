@@ -526,7 +526,7 @@ public final class AsyncEmbeddedEngine<R> implements DebeziumEngine<R>, AsyncEng
             return new ParallelSmtBatchProcessor(new SourceRecordCommitter(task), (DebeziumEngine.ChangeConsumer<SourceRecord>) handler);
         }
         if (ParallelSmtAndConvertBatchProcessor.class.getName().equals(processorClassName)) {
-            return new ParallelSmtAndConvertBatchProcessor(new ConvertingRecordCommitter(task), handler, recordConverter);
+            return new ParallelSmtAndConvertBatchProcessor(new ConvertingRecordCommitter(task), handler, recordConverter, task.context().taskMetrics());
         }
         if (ParallelSmtConsumerProcessor.class.getName().equals(processorClassName)) {
             return new ParallelSmtConsumerProcessor(new SourceRecordCommitter(task), (Consumer<SourceRecord>) consumer);

@@ -14,6 +14,7 @@ import org.apache.kafka.connect.source.SourceRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.debezium.embedded.EngineTaskMetricsMXBean;
 import io.debezium.engine.DebeziumEngine;
 
 /**
@@ -28,17 +29,20 @@ public class ParallelSmtAndConvertBatchProcessor<R> extends AbstractRecordProces
     final DebeziumEngine.RecordCommitter committer;
     final DebeziumEngine.ChangeConsumer<R> userHandler;
     final Function<SourceRecord, R> convertor;
+    final EngineTaskMetricsMXBean taskMetrics;
 
     ParallelSmtAndConvertBatchProcessor(final DebeziumEngine.RecordCommitter committer, final DebeziumEngine.ChangeConsumer<R> userHandler,
-                                        final Function<SourceRecord, R> convertor) {
+                                        final Function<SourceRecord, R> convertor, final EngineTaskMetricsMXBean taskMetrics) {
         this.committer = committer;
         this.userHandler = userHandler;
         this.convertor = convertor;
+        this.taskMetrics = taskMetrics;
     }
 
     @Override
     public void processRecords(final List<SourceRecord> records) throws Exception {
         LOGGER.debug("Thread {} is submitting {} records for processing.", Thread.currentThread().getName(), records.size());
+        taskMetrics.onEventsSeenBeforeProcessing(records.size());
         final List<Future<R>> recordFutures = new ArrayList<>(records.size());
         records.stream()
                 .forEachOrdered(r -> recordFutures.add(recordService.submit(new ProcessingCallables.TransformAndConvertRecord<R>(r, transformations, convertor))));
@@ -51,6 +55,7 @@ public class ParallelSmtAndConvertBatchProcessor<R> extends AbstractRecordProces
                 convertedRecords.add(record);
             }
         }
+        taskMetrics.onEventsSeenAfterProcessing(records.size());
 
         LOGGER.trace("Calling user handler.");
         userHandler.handleBatch(convertedRecords, committer);

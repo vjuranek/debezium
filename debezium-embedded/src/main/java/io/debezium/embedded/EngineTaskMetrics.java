@@ -25,6 +25,8 @@ public class EngineTaskMetrics extends DebeziumEngineMetrics implements EngineTa
     private final int taskId;
     private final AtomicLong totalNumberIfEventsSeen = new AtomicLong(0);
     private final AtomicLong totalNumberIfEventsProcessed = new AtomicLong(0);
+    private final AtomicLong totalNumberIfEventsSeenBeforeProcessing = new AtomicLong(0);
+    private final AtomicLong totalNumberIfEventsSeenAfterProcessing = new AtomicLong(0);
 
     public EngineTaskMetrics(int taskId) {
         this.taskId = taskId;
@@ -38,6 +40,16 @@ public class EngineTaskMetrics extends DebeziumEngineMetrics implements EngineTa
     @Override
     public long getTotalNumberOfEventsProcessed() {
         return totalNumberIfEventsProcessed.get();
+    }
+
+    @Override
+    public long getTotalNumberOfEventsSeenBeforeProcessing() {
+        return totalNumberIfEventsSeenBeforeProcessing.get();
+    }
+
+    @Override
+    public long getTotalNumberOfEventsSeenAfterProcessing() {
+        return totalNumberIfEventsSeenAfterProcessing.get();
     }
 
     @Override
@@ -58,6 +70,16 @@ public class EngineTaskMetrics extends DebeziumEngineMetrics implements EngineTa
     @Override
     public void onEventsProcessed(long numberOfEventsProcessed) {
         totalNumberIfEventsProcessed.addAndGet(numberOfEventsProcessed);
+    }
+
+    @Override
+    public void onEventsSeenBeforeProcessing(long numberOfEventsSeen) {
+        totalNumberIfEventsSeenBeforeProcessing.addAndGet(numberOfEventsSeen);
+    }
+
+    @Override
+    public void onEventsSeenAfterProcessing(long numberOfEventsSeen) {
+        totalNumberIfEventsSeenAfterProcessing.addAndGet(numberOfEventsSeen);
     }
 
     @Override
