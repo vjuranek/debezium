@@ -11,6 +11,7 @@ import org.apache.kafka.connect.storage.OffsetStorageReader;
 import org.apache.kafka.connect.storage.OffsetStorageWriter;
 
 import io.debezium.common.annotation.Incubating;
+import io.debezium.embedded.EngineTaskMetricsMXBean;
 import io.debezium.embedded.Transformations;
 import io.debezium.engine.spi.OffsetCommitPolicy;
 import io.debezium.util.Clock;
@@ -51,4 +52,9 @@ public interface DebeziumSourceTaskContext {
      * Gets the transformations which the task should apply to source events before passing them to the consumer.
      */
     Transformations transformations();
+
+    /**
+     * Gets JMX {@link EngineTaskMetricsMXBean} for tracking processed events.
+     */
+    EngineTaskMetricsMXBean taskMetrics();
 }

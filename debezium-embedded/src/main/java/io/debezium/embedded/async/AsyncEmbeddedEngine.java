@@ -64,6 +64,7 @@ import io.debezium.embedded.DebeziumEngineCommon;
 import io.debezium.embedded.EmbeddedEngineChangeEvent;
 import io.debezium.embedded.EmbeddedEngineConfig;
 import io.debezium.embedded.EmbeddedWorkerConfig;
+import io.debezium.embedded.EngineTaskMetrics;
 import io.debezium.embedded.KafkaConnectUtil;
 import io.debezium.embedded.Transformations;
 import io.debezium.engine.DebeziumEngine;
@@ -371,18 +372,18 @@ public final class AsyncEmbeddedEngine<R> implements DebeziumEngine<R>, AsyncEng
         else {
             LOGGER.debug("Creating {} instance(s) of source task(s)", taskConfigs.size());
         }
-        int i = 0;
-        for (Map<String, String> taskConfig : taskConfigs) {
+        for (int i = 0; i < taskConfigs.size(); i++) {
             final SourceTask task = (SourceTask) taskClass.getDeclaredConstructor().newInstance();
             final EngineSourceTaskContext taskContext = new EngineSourceTaskContext(
-                    taskConfig,
+                    taskConfigs.get(i),
                     connector.context().offsetStorageReader(),
                     connector.context().offsetStorageWriter(),
                     offsetCommitPolicy,
                     clock,
-                    transformations);
+                    transformations,
+                    new EngineTaskMetrics(i + 1));
             task.initialize(taskContext); // Initialize Kafka Connect source task
-            tasks.add(new EngineSourceTask(++i, task, taskContext)); // Create new DebeziumSourceTask
+            tasks.add(new EngineSourceTask(i + 1, task, taskContext)); // Create new DebeziumSourceTask
         }
     }
 
@@ -397,6 +398,8 @@ public final class AsyncEmbeddedEngine<R> implements DebeziumEngine<R>, AsyncEng
         LOGGER.debug("Starting source connector tasks.");
         final ExecutorCompletionService<Void> taskCompletionService = new ExecutorCompletionService(taskService);
         for (EngineSourceTask task : tasks) {
+            LOGGER.debug("Registering JMX bean for task ID {}.", task.taskId());
+            task.context().taskMetrics().register();
             taskCompletionService.submit(() -> {
                 task.connectTask().start(task.context().config());
                 return null;
@@ -622,6 +625,12 @@ public final class AsyncEmbeddedEngine<R> implements DebeziumEngine<R>, AsyncEng
             LOGGER.warn("Failure during stopping tasks, stopping them immediately. Failed with ", e);
         }
         finally {
+            // Unregister JMX beans
+            for (EngineSourceTask task : tasks) {
+                LOGGER.debug("Unregistering JMX bean for task ID {}.", task.taskId());
+                task.context().taskMetrics().unregister();
+            }
+
             // Make sure task service is shut down and no other tasks can be run.
             taskService.shutdownNow();
         }
@@ -1155,7 +1164,9 @@ public final class AsyncEmbeddedEngine<R> implements DebeziumEngine<R>, AsyncEng
                 final List<SourceRecord> changeRecords = task.connectTask().poll(); // blocks until there are values ...
                 LOGGER.trace("Thread {} polled {} records.", Thread.currentThread().getName(), changeRecords == null ? "no" : changeRecords.size());
                 if (changeRecords != null && !changeRecords.isEmpty()) {
+                    task.context().taskMetrics().onEventsSeen(changeRecords.size());
                     processor.processRecords(changeRecords);
+                    task.context().taskMetrics().onEventsProcessed(changeRecords.size());
                 }
                 else {
                     LOGGER.trace("No records.");
