@@ -66,7 +66,7 @@ public abstract class JdbcSinkTests {
     private String createRecord(String fieldName, String fieldValue) {
         DebeziumSinkRecordFactory factory = new DebeziumSinkRecordFactory();
 
-        SinkRecord record = SinkRecordBuilder.update() // TODO: Change to create when fixed in JDBC connector testsuite
+        SinkRecord record = SinkRecordBuilder.create()
                 .flat(false)
                 .name("jdbc-connector-test")
                 .recordSchema(SchemaBuilder.struct().field(fieldName, Schema.STRING_SCHEMA).build())
