@@ -130,7 +130,7 @@ public class OcpArtifactServerController {
     public List<String> readArtifactListing() throws IOException {
         return await()
                 .pollInterval(5, TimeUnit.SECONDS)
-                .atMost(scaled(1), TimeUnit.MINUTES)
+                .atMost(scaled(5), TimeUnit.MINUTES)
                 .ignoreExceptions()
                 .until(this::tryReadingArtifactListing, result -> !result.isEmpty());
     }
@@ -159,11 +159,22 @@ public class OcpArtifactServerController {
 
     public void waitForServer() {
         LOGGER.info("Waiting for Artifact Server");
+
+        ocp.pods()
+                .inNamespace(project)
+                .withLabel("app", "debezium-artifact-server")
+                .waitUntilReady(scaled(5), TimeUnit.MINUTES);
+
         ocp.apps()
                 .deployments()
                 .inNamespace(project)
                 .withName(deployment.getMetadata().getName())
                 .waitUntilCondition(WaitConditions::deploymentAvailableCondition, scaled(5), TimeUnit.MINUTES);
 
+        try {
+            Thread.sleep(30_000);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
     }
 }
