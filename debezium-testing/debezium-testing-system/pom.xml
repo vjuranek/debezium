@@ -22,7 +22,6 @@
     <version.apicurio>2.4.1.Final</version.apicurio>
     <version.apicurio.model>1.1.0</version.apicurio.model>
     <version.fixture5>0.1.0</version.fixture5>
-    <version.debezium.jdbc.tests>2.6.0.Beta1</version.debezium.jdbc.tests>
 
     <product.build>false</product.build>
     <prepare.strimzi>true</prepare.strimzi>
@@ -463,13 +462,6 @@
       <groupId>io.debezium</groupId>
       <artifactId>debezium-connector-jdbc</artifactId>
       <type>test-jar</type>
-      <scope>test</scope>
-      <version>${version.debezium.connector}</version>
-    </dependency>
-
-    <dependency>
-      <groupId>io.debezium</groupId>
-      <artifactId>debezium-core</artifactId>
       <scope>test</scope>
       <version>${version.debezium.connector}</version>
     </dependency>

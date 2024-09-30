@@ -173,7 +173,8 @@ public class OcpArtifactServerController {
 
         try {
             Thread.sleep(30_000);
-        } catch (InterruptedException e) {
+        }
+        catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
     }
