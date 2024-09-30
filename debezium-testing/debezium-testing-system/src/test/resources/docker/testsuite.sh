@@ -31,7 +31,7 @@ cd "${SCRIPT_LOCATION}" || exit 1
   fi
 
 
-  eval './mvnw '$MVN_OPTIONS''
+  eval './mvnw -X '$MVN_OPTIONS''
 
 
   pushd debezium-testing/debezium-testing-system/target/failsafe-reports || exit 1
