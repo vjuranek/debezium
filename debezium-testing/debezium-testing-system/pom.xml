@@ -32,8 +32,8 @@
     <image.as>${image.build.registry}/debezium/test-artifact-server:${project.version}</image.as>
 
     <!--Docker configuration-->
-    <docker.image.mysql>quay.io/debezium/example-mysql-master:latest</docker.image.mysql>
-    <docker.image.mysql.replica>quay.io/debezium/example-mysql-replica:latest</docker.image.mysql.replica>
+    <docker.image.mysql>quay.io/vjuranek/example-mysql-master:latest</docker.image.mysql>
+    <docker.image.mysql.replica>quay.io/vjuranek/example-mysql-replica:latest</docker.image.mysql.replica>
     <docker.image.mariadb>quay.io/debezium/example-mariadb:latest</docker.image.mariadb>
     <docker.image.postgresql>quay.io/debezium/example-postgres:latest</docker.image.postgresql>
     <docker.image.postgresql.replica>quay.io/debezium/postgres:15</docker.image.postgresql.replica>
