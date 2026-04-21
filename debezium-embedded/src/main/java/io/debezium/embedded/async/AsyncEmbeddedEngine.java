@@ -51,9 +51,6 @@ import org.apache.kafka.connect.storage.HeaderConverter;
 import org.apache.kafka.connect.storage.KafkaOffsetBackingStore;
 import org.apache.kafka.connect.storage.MemoryOffsetBackingStore;
 import org.apache.kafka.connect.storage.OffsetBackingStore;
-import org.apache.kafka.connect.storage.OffsetStorageReader;
-import org.apache.kafka.connect.storage.OffsetStorageReaderImpl;
-import org.apache.kafka.connect.storage.OffsetStorageWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -81,6 +78,14 @@ import io.debezium.engine.source.EngineSourceConnectorContext;
 import io.debezium.engine.source.EngineSourceTask;
 import io.debezium.engine.source.EngineSourceTaskContext;
 import io.debezium.engine.spi.OffsetCommitPolicy;
+import io.debezium.source.kafka.KafkaSourceTaskContextAdapter;
+import io.debezium.spi.storage.OffsetStorageReader;
+import io.debezium.spi.storage.OffsetStorageWriter;
+import io.debezium.spi.storage.OffsetStore;
+import io.debezium.storage.kafka.KafkaOffsetStorageReaderAdapter;
+import io.debezium.storage.kafka.KafkaOffsetStorageWriterAdapter;
+import io.debezium.storage.kafka.KafkaOffsetStoreAdapter;
+import io.debezium.storage.kafka.KafkaStorageAdapter;
 import io.debezium.util.DelayStrategy;
 
 /**
@@ -372,9 +377,11 @@ public final class AsyncEmbeddedEngine<R> implements DebeziumEngine<R>, AsyncEng
             final Map<String, String> connectorConfig = validateAndGetConnectorConfig(connector.connectConnector(), connectorClassName);
 
             LOGGER.debug("Initializing offset store, offset reader and writer");
-            final OffsetBackingStore offsetStore = createAndStartOffsetStore(connectorConfig);
-            final OffsetStorageReader offsetReader = new OffsetStorageReaderImpl(offsetStore, engineName, offsetKeyConverter, offsetValueConverter);
-            final OffsetStorageWriter offsetWriter = new OffsetStorageWriter(offsetStore, engineName, offsetKeyConverter, offsetValueConverter);
+            final OffsetStore offsetStore = createAndStartOffsetStore(connectorConfig);
+            final OffsetStorageReader offsetReader = new KafkaOffsetStorageReaderAdapter((KafkaStorageAdapter.OffsetBackingStore) offsetStore, engineName,
+                    offsetKeyConverter, offsetValueConverter);
+            final OffsetStorageWriter offsetWriter = new KafkaOffsetStorageWriterAdapter((KafkaStorageAdapter.OffsetBackingStore) offsetStore, engineName,
+                    offsetKeyConverter, offsetValueConverter);
 
             LOGGER.debug("Initializing Connect connector itself");
             connector.initialize(new EngineSourceConnectorContext(this, offsetStore, offsetReader, offsetWriter));
@@ -422,7 +429,8 @@ public final class AsyncEmbeddedEngine<R> implements DebeziumEngine<R>, AsyncEng
                         offsetCommitPolicy,
                         clock,
                         transformations);
-                task.initialize(taskContext); // Initialize Kafka Connect source task
+                task.initialize(
+                        new KafkaSourceTaskContextAdapter(taskContext.config(), ((KafkaOffsetStorageReaderAdapter) taskContext.offsetStorageReader()).getDelegate())); // Initialize Kafka Connect source task
                 tasks.add(new EngineSourceTask(task, taskContext)); // Create new DebeziumSourceTask
             }
         }
@@ -810,9 +818,9 @@ public final class AsyncEmbeddedEngine<R> implements DebeziumEngine<R>, AsyncEng
      * Determines which offset backing store should be used, instantiate it and starts the offset store.
      *
      * @param connectorConfig {@link Map<String, String>} with the connector configuration.
-     * @return {@link OffsetBackingStore} instance used by the engine.
+     * @return {@link OffsetStore} instance used by the engine.
      */
-    private OffsetBackingStore createAndStartOffsetStore(final Map<String, String> connectorConfig) throws Exception {
+    private OffsetStore createAndStartOffsetStore(final Map<String, String> connectorConfig) throws Exception {
         final String offsetStoreClassName = config.getString(AsyncEngineConfig.OFFSET_STORAGE);
 
         LOGGER.debug("Creating instance of offset store for {}.", offsetStoreClassName);
@@ -844,13 +852,13 @@ public final class AsyncEmbeddedEngine<R> implements DebeziumEngine<R>, AsyncEng
         }
 
         LOGGER.debug("Offset store {} successfully started.", offsetStoreClassName);
-        return offsetStore;
+        return new KafkaOffsetStoreAdapter(offsetStore);
     }
 
     /**
-     * Commits the offset to {@link OffsetBackingStore} via {@link OffsetStorageWriter}.
+     * Commits the offset to {@link OffsetStore} via {@link OffsetStorageWriter}.
      *
-     * @param offsetWriter {@link OffsetStorageWriter} which performs the flushing the offset into {@link OffsetBackingStore}.
+     * @param offsetWriter {@link OffsetStorageWriter} which performs the flushing the offset into {@link OffsetStore}.
      * @param commitTimeout amount of time to wait for offset flush to finish before it's aborted.
      * @param task {@link SourceTask} which performs the offset commit.
      * @return {@code true} if the offset was successfully committed, {@code false} otherwise.
