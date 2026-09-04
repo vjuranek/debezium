@@ -131,6 +131,7 @@ public class OcpArtifactServerController {
             artifactsStream = Stream.concat(artifactsStream, apicurio.stream());
         }
         List<String> artifacts = artifactsStream.collect(toList());
+        LOGGER.info("Requesting following artifacts {}", artifacts);
         return createPlugin("debezium-connector-" + database, artifacts);
     }
 
@@ -176,5 +177,6 @@ public class OcpArtifactServerController {
                 .withName(deployment.getMetadata().getName())
                 .waitUntilCondition(WaitConditions::deploymentAvailableCondition, scaled(5), TimeUnit.MINUTES);
         this.artifacts = listArtifacts();
+        LOGGER.info("Read following artifact listing: {}", this.artifacts);
     }
 }
