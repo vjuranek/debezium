@@ -96,7 +96,7 @@ public class OcpArtifactServerController {
     public Plugin createPlugin(String name, List<String> artifacts) {
         List<Artifact> pluginArtifacts = artifacts.stream()
                 .map(this::getArtifactUrlAsString)
-                .map(a -> a.orElseThrow(() -> new IllegalStateException("Missing artifact for plugin'" + name + "'")))
+                .map(a -> a.orElseThrow(() -> new IllegalStateException("Missing artifact " + a + " for plugin'" + name + "'")))
                 .map(this::createArtifact)
                 .collect(toList());
 
