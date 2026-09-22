@@ -14,7 +14,7 @@ import io.debezium.testing.system.tools.ConfigProperties;
  */
 public enum OpenshiftOperatorEnum {
     APICURIO(PRODUCT_BUILD ? "Service Registry" : "Apicurio",
-            "apicurio-registry-operator",
+            "apicurio-registry-3",
             ConfigProperties.APICURIO_OPERATOR_CHANNEL,
             ConfigProperties.OCP_PROJECT_REGISTRY + "-opgroup",
             ConfigProperties.APICURIO_STARTING_CSV),
