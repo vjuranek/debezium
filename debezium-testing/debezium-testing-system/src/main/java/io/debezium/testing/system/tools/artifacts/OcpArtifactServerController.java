@@ -122,16 +122,16 @@ public class OcpArtifactServerController {
         if (!database.equalsIgnoreCase("jdbc")) {
             List<String> apicurio = List.of(
                     // add archive with Apicurio converters
-                    "connect-converter",
+                    "connect-converter");
                     // and libraries to override old libs pulled by Apicurio
-                    "jackson/jackson-databind",
-                    "jackson/jackson-dataformat-csv",
-                    "jackson/jackson-datatype-jsr310",
-                    "jackson/jackson-jaxrs-base",
-                    "jackson/jackson-jaxrs-json-provider",
-                    "jackson/jackson-module-jaxb-annotations",
-                    "jackson/jackson-module-afterburner",
-                    "jackson/jackson-module-scala_2.13");
+//                    "jackson/jackson-databind",
+//                    "jackson/jackson-dataformat-csv",
+//                    "jackson/jackson-datatype-jsr310",
+//                    "jackson/jackson-jaxrs-base",
+//                    "jackson/jackson-jaxrs-json-provider",
+//                    "jackson/jackson-module-jaxb-annotations",
+//                    "jackson/jackson-module-afterburner",
+//                    "jackson/jackson-module-scala_2.13");
             artifactsStream = Stream.concat(artifactsStream, apicurio.stream());
         }
         List<String> artifacts = artifactsStream.collect(toList());
