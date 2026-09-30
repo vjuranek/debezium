@@ -18,9 +18,12 @@ import org.junit.platform.launcher.TestPlan;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.apicurio.registry.operator.api.v1.ApicurioRegistry3;
+import io.apicurio.registry.operator.api.v1.ApicurioRegistry3List;
 import io.debezium.testing.system.tools.ConfigProperties;
 import io.debezium.testing.system.tools.OpenShiftUtils;
 import io.debezium.testing.system.tools.WaitConditions;
+import io.debezium.testing.system.tools.registry.OcpApicurioController;
 import io.fabric8.kubernetes.api.model.ObjectMetaBuilder;
 import io.fabric8.kubernetes.api.model.ObjectReferenceBuilder;
 import io.fabric8.kubernetes.client.KubernetesClientException;
@@ -163,6 +166,12 @@ public class NamespacePreparationListener implements TestExecutionListener {
 
     private void deleteNamespaces() {
         LOGGER.info("Cleaning namespaces");
+
+        // Drain the Apicurio registry CR(s) while the operator is still alive. The Apicurio operator and the
+        // ApicurioRegistry3 CR live in the same registry project; deleting the project removes both concurrently,
+        // so the CR's finalizer can never be processed and the project would hang in 'Terminating' forever.
+        deleteApicurioRegistries();
+
         // delete projects if project names are set
         projectNames.forEach(name -> {
             Project project = client.projects().withName(name).get();
@@ -170,6 +179,32 @@ public class NamespacePreparationListener implements TestExecutionListener {
                 client.projects().delete(project);
             }
         });
+
+        // wait for the projects to actually terminate, so a stuck finalizer fails loudly instead of hanging
+        projectNames.forEach(name -> await().atMost(WaitConditions.scaled(5), TimeUnit.MINUTES)
+                .pollInterval(5, SECONDS)
+                .until(() -> client.projects().withName(name).get() == null));
+    }
+
+    private void deleteApicurioRegistries() {
+        String registryProject = ConfigProperties.OCP_PROJECT_REGISTRY;
+        if (registryProject == null || client.projects().withName(registryProject).get() == null) {
+            return;
+        }
+        try {
+            List<ApicurioRegistry3> registries = client.resources(ApicurioRegistry3.class, ApicurioRegistry3List.class)
+                    .inNamespace(registryProject)
+                    .list()
+                    .getItems();
+            for (ApicurioRegistry3 registry : registries) {
+                LOGGER.info("Undeploying Apicurio registry '" + registry.getMetadata().getName() + "' in '" + registryProject + "'");
+                new OcpApicurioController(registry, client, null).undeploy();
+            }
+        }
+        catch (Exception e) {
+            // The ApicurioRegistry3 CRD may not be registered (e.g. runs without the Apicurio operator); nothing to drain
+            LOGGER.info("Skipping Apicurio registry cleanup in '" + registryProject + "': " + e.getMessage());
+        }
     }
 
     private boolean isOcpAvailable() {
